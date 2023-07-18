@@ -17,21 +17,31 @@ import random
 from sklearn.model_selection import train_test_split
 from sklearn import svm
 
+import schedule
+from functools import partial
+
 port = "COM5"  # Serial port
 baud_rate = 115200  # Baud rate
 timeout_seconds = 5  # determine the end of transmission
 fetch_duration_threshold = 10  # determine whether the info will be recorded
 # is_stop = [False]
 stop_event = threading.Event()
+data, s, e = process2("./temp/received_data.txt")
+data = np.array(data)
+data = data.reshape(1, -1)
+df = pd.DataFrame(data.T, columns=['data'])
 # started_receive = False
+
+
+
 
 def receive_data():
     global stop_event
 
     while True:
-        print(f'into receive data')
-        print(stop_event.is_set())
-        print(stop_event.is_set() is True)
+        # print(f'into receive data')
+        # print(stop_event.is_set())
+        # print(stop_event.is_set() is True)
         if stop_event.is_set() is True:
             print("here")
             break
@@ -57,7 +67,7 @@ def receive_data():
                 inner_time = time.time()
 
             if time.time() - inner_time > timeout_seconds:
-                print(f'Time out for: {elapsed_time}')
+                # print(f'Time out for: {elapsed_time}')
                 break
             
         ser.close()
@@ -109,17 +119,42 @@ def get_model():
     # print(f'acc {count / len(pre)}')
     return clf
 
+model = get_model()
+res = model.predict(data[:, :70])[0] / 20
+
+class ThreadWithReturnValue(Thread):
+    def run(self):
+        if self._target is not None:
+            self._return = self._target(*self._args, **self._kwargs)
+
+    def join(self):
+        super().join()
+        return self._return
+
+def get_drink():
+    global df, res
+    curr = datetime.datetime.now()
+    st.text(f'current time is {curr}')
+    print(f'into drink draw')
+    data, s, e = process2("./temp/received_data.txt")
+    data = np.array(data)
+    data = data.reshape(1, -1)
+    df = pd.DataFrame(data.T, columns=['data'])
+    print(f'data {data.shape}')
+    # st.line_chart(df)
+    res = model.predict(data[:, :70])
+    res = res[0] / 20
+    # st.line_chart(df)
+    # print(f'type {type(res[0])}')
+    # st.progress(res[0] * 10 / 200)
+    # st.text(res)
+    # a = res[0] / 20
+    # st.progress(a)
+    # st.success(f'you have drink {res[0] * 10} ml')
+
+
 def main():
-    
-    """
-    1. show drinked
-    2. reminds when data received, and save to txt
-        when received, transfer data to database
-        get id from database, and transfer it to model
-        show the amount of drink
-    3. show times to drink
-    others:get info from xiaomi, 微信步数
-    """
+
     # Title
     st.title("Smart Bottle")
     st.subheader("care you about your drink")
@@ -130,102 +165,56 @@ def main():
         It will also remind you when and how much to drink, base on the data about your weight and amount of exercise.
         """)
     
-    model = get_model()
+    
     started_receive = False
     # your drinked
-    if st.checkbox("start receive"):
-        # 创建 Thread 实例
-        t1 = Thread(target=receive_data)
-        if st.button("start"):
-            print(f'st')
-            stop_event.clear()
-            t1.start()
-        else:
-            stop_event.set()
-            # stop_flag.clear()
-            # 启动线程运行
+    t1 = Thread(target=receive_data)
+    t1.start()
+    # if st.checkbox("start receive"):
+    #     # 创建 Thread 实例
+    #     if st.button("start"):
+    #         print(f'st')
+    #         stop_event.clear()
             
-            # print("started_receive: {}".format(started_receive))
-            # print("stop event {}".format(stop_event.is_set()))
-            # if started_receive :
-            #     print("setting stop event")
-            #     stop_event.set()
-            # else:
-            #     print("clearing stop event")
-            #     stop_event.clear()
-            #     t1.start()
-
-            # started_receive = ~ started_receive
-            # print(f'start_rece {started_receive}')
-
-            # stop_flag.set()
-            # print(f'flag {stop_flag.is_set()}')
-            # receive_data()
-            # t1.join()
-        # 等待所有线程执行完毕
-        # if st.button("stop"):
-        #     stop_event.set()
-        #     print("stop event set")
-        #     print(stop_event.is_set())
-        #     print(stop_event.is_set() is True)
-            # print(stop_event.is_set())
-            # is_stop[0] = True
-            # print("stop set: {}".format(is_stop))
-            # stop_flag.set()
-            # print(f'flag {stop_flag.is_set()}')
-            
-            # t1.join()  # join() 等待线程终止，要不然一直挂起
-
-    # transfer txt to excel
-    if st.checkbox("start transfer"):
-        st.subheader("Analyse Your Text")
-        rece = st.text_input("receive file name")
-        gene = st.text_input("generate file name")
-        if st.button("Analyze"):
-            process("./temp")
-            st.success("good")
-
-    if st.checkbox("get predict"):
-        st.subheader("Analyse Your data")
-        if st.button("drink"):
-            data, s, e = process2("./temp/received_data.txt")
-            data = np.array(data)
-            data = data.reshape(1, -1)
-            df = pd.DataFrame(data)
-            st.line_chart(df)
-            print(f'data {data.shape}')
-            res = model.predict(data[:, :70])
-            st.text(res)
-            a = res[0] / 200
-            st.progress(a)
-            st.success("good")
-
-
-    # transfer excel to data
-    if st.checkbox("get drink"):
-        files = os.scandir("./temp")
-        data = None
-        for file in files:
-            if file.is_file():
-                if file.name.endswith('xlsx'):
-                    data, y, z = readFromExcel2(file.path)
-                    break
-        
-        y = np.array(y)
-        z = np.array(z)
-        y = y.reshape(1, -1)
-        z = z.reshape(1, -1)
-        print(f'data in to {data.shape}')
-        df = pd.DataFrame(y.reshape(-1))
-        yz = np.array([y, z])
-        df_yz = pd.DataFrame(yz.reshape(-1, 2))
-        print(f'data in to {data.shape}')
+    #     else:
+    #         stop_event.set()
+    
+    tab1, tab2 = st.tabs(["apply", "train"])
+    a = np.zeros((80, 1))
+    global df, res
+    # partial_get_drink = partial(get_drink, model=model)
+    with tab1:
+        # t2 = Thread(target=get_drink, args=(model, res))
+        # t2.start()
+        # st.line_chart(res[0])
+        # st.progress(res[1])
+        get_drink()
         st.line_chart(df)
-        st.line_chart(df_yz)
-        res = model.predict(y[:, :70])
+        st.progress(res)
+        # schedule.every(10).seconds.do(get_drink)
+        
+        # if len()
+        # st.line_chart(result[0])
+        # st.progress(result[1])
 
-        st.text(res)
+        # if st.checkbox("get predict"):
+        #     st.subheader("Analyse Your data")
+        #     if st.button("drink"):
+        #         data, s, e = process2("./temp/received_data.txt")
+        #         data = np.array(data)
+        #         data = data.reshape(1, -1)
+        #         df = pd.DataFrame(data.T, columns=['data'])
+        #         print(f'data {data.shape}')
+        #         st.line_chart(df)
+        #         res = model.predict(data[:, :70])
+        #         st.text(res)
+        #         a = res[0] / 20
+        #         st.progress(a)
+        #         st.success(f'you have drink {res[0] * 10} ml')
 
+    
+    with tab2:
+        st.header("train")
 
     st.sidebar.subheader("About App")
     st.sidebar.text("smartBottle")
@@ -239,5 +228,10 @@ def main():
 
 if __name__ == '__main__':
     main()
+    while True:
+ 
+    # Checks whether a scheduled task
+    # is pending to run or not
+        schedule.run_pending()
 
     
